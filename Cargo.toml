@@ -1,0 +1,34 @@
+[package]
+name = "chaos_pendulum"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+description = "A Rust implementation of Chaotic Double Pendulum Simulation with GUI"
+license = "MIT"
+repository = "https://github.com/yourusername/chaos_pendulum"
+keywords = ["physics", "chaos", "pendulum", "simulation", "gui"]
+categories = ["simulation", "science"]
+
+[dependencies]
+eframe = "0.28"
+egui = "0.28"
+egui_plot = "0.28"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rfd = "0.14"
+chrono = { version = "0.4", features = ["serde"] }
+
+[dev-dependencies]
+criterion = "0.5"
+tempfile = "3.0"
+
+[[bin]]
+name = "chaos_pendulum"
+path = "src/main.rs"
+
+[profile.release]
+strip = true
+
+[target.'cfg(windows)'.dependencies]
+
+[target.'cfg(windows)'.build-dependencies]
