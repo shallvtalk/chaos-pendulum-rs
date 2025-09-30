@@ -91,16 +91,16 @@ impl ThemeManager {
         &self,
     ) -> (egui::Color32, egui::Color32, egui::Color32, egui::Color32) {
         let light_colors = (
-            egui::Color32::BLACK,                                       // 摆杆颜色
-            egui::Color32::RED,                                         // 质点颜色
-            egui::Color32::BLUE,                                        // 轨迹颜色
-            egui::Color32::from_rgba_premultiplied(128, 128, 128, 128), // 背景网格
+            egui::Color32::BLACK,                      // 摆杆颜色
+            egui::Color32::RED,                        // 质点颜色
+            egui::Color32::BLUE,                       // 轨迹颜色
+            egui::Color32::from_rgb(180, 180, 180),    // 背景网格 - 深灰色，在白色背景上可见
         );
         let dark_colors = (
-            egui::Color32::WHITE,                                    // 摆杆颜色
-            egui::Color32::from_rgb(255, 100, 100),                  // 质点颜色
-            egui::Color32::from_rgb(100, 150, 255),                  // 轨迹颜色
-            egui::Color32::from_rgba_premultiplied(80, 80, 80, 128), // 背景网格
+            egui::Color32::WHITE,                   // 摆杆颜色
+            egui::Color32::from_rgb(255, 100, 100), // 质点颜色
+            egui::Color32::from_rgb(100, 150, 255), // 轨迹颜色
+            egui::Color32::from_rgb(80, 80, 80),    // 背景网格 - 深灰色，在黑色背景上可见
         );
 
         // 如果正在进行主题切换动画
