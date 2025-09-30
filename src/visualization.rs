@@ -15,6 +15,10 @@ pub struct PendulumRenderer {
     center: egui::Pos2,
     /// 缩放比例（像素/米）
     scale: f32,
+    /// 当前正在拖动的摆球（None, Some(1), Some(2)）
+    dragging_mass: Option<u8>,
+    /// 拖动起始位置
+    drag_start_pos: Option<egui::Pos2>,
 }
 
 #[allow(dead_code)]
@@ -24,10 +28,13 @@ impl PendulumRenderer {
         Self {
             center: egui::Pos2::ZERO,
             scale: 100.0, // 默认100像素/米
+            dragging_mass: None,
+            drag_start_pos: None,
         }
     }
 
     /// 在给定的UI区域内渲染摆系统
+    /// 返回是否进行了拖动操作以及新的摆状态
     pub fn render(
         &mut self,
         ui: &mut egui::Ui,
@@ -35,7 +42,8 @@ impl PendulumRenderer {
         statistics: &PhysicsStatistics,
         theme_manager: &ThemeManager,
         ui_state: &UiStateManager,
-    ) {
+        is_paused: bool,
+    ) -> Option<crate::pendulum::PendulumState> {
         let available_rect = ui.available_rect_before_wrap();
         
         // 更新画布中心点
@@ -60,8 +68,17 @@ impl PendulumRenderer {
         // 绘制摆杆和质点
         self.draw_pendulum(ui, pendulum, rod_color, mass_color);
         
-        // 处理鼠标交互
-        self.handle_mouse_interaction(ui, ui_state);
+        // 处理鼠标交互（包括拖动）
+        let new_state = if is_paused {
+            // 在暂停状态下显示拖动提示
+            self.draw_drag_hint(ui, pendulum);
+            self.handle_pendulum_dragging(ui, pendulum)
+        } else {
+            self.handle_mouse_interaction(ui, ui_state);
+            None
+        };
+        
+        new_state
     }
 
     /// 绘制背景网格
@@ -109,6 +126,51 @@ impl PendulumRenderer {
                 egui::Stroke::new(0.5, color),
             );
             y -= grid_spacing;
+        }
+    }
+
+    /// 绘制拖动提示
+    fn draw_drag_hint(&self, ui: &mut egui::Ui, pendulum: &DoublePendulum) {
+        let painter = ui.painter();
+        
+        // 获取摆球位置
+        let (pos1, pos2) = pendulum.get_positions();
+        let screen_pos1 = self.world_to_screen(pos1.0, pos1.1);
+        let screen_pos2 = self.world_to_screen(pos2.0, pos2.1);
+        
+        // 计算摆球半径
+        let mass1_radius = (pendulum.params.m1 * 8.0 + 4.0) as f32;
+        let mass2_radius = (pendulum.params.m2 * 8.0 + 4.0) as f32;
+        
+        // 在摆球周围绘制虚线圆圈提示可以拖动
+        let hint_color = egui::Color32::from_rgba_unmultiplied(255, 255, 255, 100);
+        
+        // 绘制提示圆圈
+        painter.circle_stroke(
+            screen_pos1, 
+            mass1_radius + 8.0, 
+            egui::Stroke::new(2.0, hint_color)
+        );
+        painter.circle_stroke(
+            screen_pos2, 
+            mass2_radius + 8.0, 
+            egui::Stroke::new(2.0, hint_color)
+        );
+        
+        // 显示文字提示
+        if self.dragging_mass.is_none() {
+            let hint_text = "Drag pendulum balls to adjust position";
+            let text_pos = egui::Pos2::new(
+                ui.available_rect_before_wrap().min.x + 10.0,
+                ui.available_rect_before_wrap().min.y + 10.0
+            );
+            painter.text(
+                text_pos,
+                egui::Align2::LEFT_TOP,
+                hint_text,
+                egui::FontId::default(),
+                egui::Color32::LIGHT_GRAY,
+            );
         }
     }
 
@@ -201,11 +263,22 @@ impl PendulumRenderer {
         let mass1_radius = (pendulum.params.m1 * 8.0 + 4.0) as f32;
         let mass2_radius = (pendulum.params.m2 * 8.0 + 4.0) as f32;
         
-        // 绘制质点
-        painter.circle_filled(screen_pos1, mass1_radius, mass_color);
+        // 绘制质点（拖动时使用不同颜色）
+        let mass1_color = if self.dragging_mass == Some(1) {
+            egui::Color32::YELLOW // 拖动时高亮显示
+        } else {
+            mass_color
+        };
+        let mass2_color = if self.dragging_mass == Some(2) {
+            egui::Color32::YELLOW // 拖动时高亮显示
+        } else {
+            mass_color
+        };
+        
+        painter.circle_filled(screen_pos1, mass1_radius, mass1_color);
         painter.circle_stroke(screen_pos1, mass1_radius, egui::Stroke::new(1.0, rod_color));
         
-        painter.circle_filled(screen_pos2, mass2_radius, mass_color);
+        painter.circle_filled(screen_pos2, mass2_radius, mass2_color);
         painter.circle_stroke(screen_pos2, mass2_radius, egui::Stroke::new(1.0, rod_color));
         
         // 绘制速度向量（可选）
@@ -252,6 +325,87 @@ impl PendulumRenderer {
         if omega2.abs() > 0.01 {
             let v2_end = pos2 + egui::Vec2::new(v2x as f32 * velocity_scale, -v2y as f32 * velocity_scale);
             painter.arrow(pos2, v2_end - pos2, egui::Stroke::new(1.5, velocity_color));
+        }
+    }
+
+    /// 处理摆球拖动交互（仅在暂停状态下）
+    fn handle_pendulum_dragging(&mut self, ui: &mut egui::Ui, pendulum: &crate::pendulum::DoublePendulum) -> Option<crate::pendulum::PendulumState> {
+        let response = ui.interact(ui.available_rect_before_wrap(), ui.id(), egui::Sense::click_and_drag());
+        
+        // 获取当前摆球位置
+        let (pos1, pos2) = pendulum.get_positions();
+        let screen_pos1 = self.world_to_screen(pos1.0, pos1.1);
+        let screen_pos2 = self.world_to_screen(pos2.0, pos2.1);
+        
+        // 计算摆球半径（用于检测点击）
+        let mass1_radius = (pendulum.params.m1 * 8.0 + 4.0) as f32;
+        let mass2_radius = (pendulum.params.m2 * 8.0 + 4.0) as f32;
+        
+        if let Some(pointer_pos) = response.interact_pointer_pos() {
+            // 检测鼠标是否在摆球上
+            if response.drag_started() {
+                let dist1 = pointer_pos.distance(screen_pos1);
+                let dist2 = pointer_pos.distance(screen_pos2);
+                
+                if dist1 <= mass1_radius {
+                    self.dragging_mass = Some(1);
+                    self.drag_start_pos = Some(pointer_pos);
+                } else if dist2 <= mass2_radius {
+                    self.dragging_mass = Some(2);
+                    self.drag_start_pos = Some(pointer_pos);
+                }
+            }
+            
+            // 处理拖动过程
+            if response.dragged() && self.dragging_mass.is_some() {
+                let world_pos = self.screen_to_world(pointer_pos);
+                return self.calculate_new_pendulum_state(pendulum, world_pos);
+            }
+        }
+        
+        // 拖动结束
+        if response.drag_stopped() {
+            self.dragging_mass = None;
+            self.drag_start_pos = None;
+        }
+        
+        None
+    }
+    
+    /// 根据拖动位置计算新的摆状态
+    fn calculate_new_pendulum_state(&self, pendulum: &crate::pendulum::DoublePendulum, target_pos: (f64, f64)) -> Option<crate::pendulum::PendulumState> {
+        let l1 = pendulum.params.l1;
+        let _l2 = pendulum.params.l2;
+        
+        match self.dragging_mass {
+            Some(1) => {
+                // 拖动上摆：计算新的theta1，保持theta2相对角度
+                let new_theta1 = target_pos.0.atan2(-target_pos.1);
+                let theta_diff = pendulum.state.theta2 - pendulum.state.theta1;
+                let new_theta2 = new_theta1 + theta_diff;
+                
+                Some(crate::pendulum::PendulumState::new(
+                    new_theta1,
+                    new_theta2,
+                    0.0, // 拖动时重置角速度
+                    0.0,
+                ))
+            },
+            Some(2) => {
+                // 拖动下摆：计算新的theta2，保持theta1不变
+                let (pos1_x, pos1_y) = pendulum.state.get_mass1_position(l1);
+                let relative_x = target_pos.0 - pos1_x;
+                let relative_y = target_pos.1 - pos1_y;
+                let new_theta2 = relative_x.atan2(-relative_y);
+                
+                Some(crate::pendulum::PendulumState::new(
+                    pendulum.state.theta1,
+                    new_theta2,
+                    0.0, // 拖动时重置角速度
+                    0.0,
+                ))
+            },
+            _ => None, // 处理其他无效值
         }
     }
 

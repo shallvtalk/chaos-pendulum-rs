@@ -489,14 +489,33 @@ impl eframe::App for ChaosPendulumApp {
             
             ui.separator();
             
-            // 渲染摆系统
-            self.renderer.render(
+            // 渲染摆系统，如果在暂停状态下拖动了摆球，则更新状态
+            if let Some(new_state) = self.renderer.render(
                 ui,
                 &self.pendulum,
                 &self.statistics,
                 &self.theme_manager,
                 &self.ui_state,
-            );
+                !self.is_running, // 传递暂停状态
+            ) {
+                // 更新摆的状态
+                self.pendulum.state = new_state;
+                
+                // 重新记录统计数据
+                let energy = self.pendulum.total_energy();
+                self.statistics.add_energy_data(energy, self.pendulum.kinetic_energy(), self.pendulum.potential_energy());
+                
+                let (pos1, pos2) = self.pendulum.get_positions();
+                self.statistics.add_trajectory_point(pos1.0, pos1.1, pos2.0, pos2.1);
+                self.statistics.add_phase_space_point(
+                    self.pendulum.state.theta1,
+                    self.pendulum.state.omega1,
+                    self.pendulum.state.theta2,
+                    self.pendulum.state.omega2,
+                );
+                
+                self.set_status("Pendulum position updated".to_string());
+            }
         });
 
         // 如果模拟正在运行，请求持续重绘
