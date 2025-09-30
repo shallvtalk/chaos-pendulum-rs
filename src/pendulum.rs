@@ -1,6 +1,5 @@
 /// 双摆物理系统模块
 /// 定义双摆的状态、参数和基本物理计算
-
 use serde::{Deserialize, Serialize};
 
 /// 双摆的瞬时状态
@@ -26,7 +25,6 @@ impl PendulumState {
             omega2,
         }
     }
-
 
     /// 获取上摆质点的笛卡尔坐标
     pub fn get_mass1_position(&self, l1: f64) -> (f64, f64) {
@@ -89,6 +87,12 @@ impl PendulumState {
     pub fn normalize_angles(&mut self) {
         self.theta1 = normalize_angle(self.theta1);
         self.theta2 = normalize_angle(self.theta2);
+    }
+
+    /// 创建静止状态（角速度为0）
+    #[allow(dead_code)]
+    pub fn at_rest(theta1: f64, theta2: f64) -> Self {
+        Self::new(theta1, theta2, 0.0, 0.0)
     }
 }
 
@@ -220,7 +224,9 @@ impl DoublePendulum {
     /// 获取两个质点的当前位置
     pub fn get_positions(&self) -> ((f64, f64), (f64, f64)) {
         let pos1 = self.state.get_mass1_position(self.params.l1);
-        let pos2 = self.state.get_mass2_position(self.params.l1, self.params.l2);
+        let pos2 = self
+            .state
+            .get_mass2_position(self.params.l1, self.params.l2);
         (pos1, pos2)
     }
 }
@@ -285,7 +291,7 @@ mod tests {
         assert!((normalize_angle(0.0) - 0.0).abs() < 1e-10);
         assert!((normalize_angle(std::f64::consts::PI) - std::f64::consts::PI).abs() < 1e-10);
         assert!((normalize_angle(-std::f64::consts::PI) - (-std::f64::consts::PI)).abs() < 1e-10);
-        
+
         // 测试大角度
         let big_angle = 3.0 * std::f64::consts::PI;
         let normalized = normalize_angle(big_angle);
@@ -299,7 +305,7 @@ mod tests {
         let mut pendulum = DoublePendulum::new(state, params);
 
         assert_eq!(pendulum.time, 0.0);
-        
+
         pendulum.advance_time(0.1);
         assert_eq!(pendulum.time, 0.1);
 

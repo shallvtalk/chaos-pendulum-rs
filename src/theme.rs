@@ -33,7 +33,6 @@ impl ThemeManager {
         }
     }
 
-
     /// 开始主题切换动画
     pub fn start_theme_transition(&mut self, new_theme: ColorTheme) {
         if new_theme != self.current_theme {
@@ -88,17 +87,19 @@ impl ThemeManager {
     }
 
     /// 获取当前主题的颜色配置（用于摆杆和轨迹渲染）
-    pub fn get_pendulum_colors(&self) -> (egui::Color32, egui::Color32, egui::Color32, egui::Color32) {
+    pub fn get_pendulum_colors(
+        &self,
+    ) -> (egui::Color32, egui::Color32, egui::Color32, egui::Color32) {
         let light_colors = (
-            egui::Color32::BLACK,                  // 摆杆颜色
-            egui::Color32::RED,                    // 质点颜色
-            egui::Color32::BLUE,                   // 轨迹颜色
+            egui::Color32::BLACK,                                       // 摆杆颜色
+            egui::Color32::RED,                                         // 质点颜色
+            egui::Color32::BLUE,                                        // 轨迹颜色
             egui::Color32::from_rgba_premultiplied(128, 128, 128, 128), // 背景网格
         );
         let dark_colors = (
-            egui::Color32::WHITE,                  // 摆杆颜色
-            egui::Color32::from_rgb(255, 100, 100), // 质点颜色
-            egui::Color32::from_rgb(100, 150, 255), // 轨迹颜色
+            egui::Color32::WHITE,                                    // 摆杆颜色
+            egui::Color32::from_rgb(255, 100, 100),                  // 质点颜色
+            egui::Color32::from_rgb(100, 150, 255),                  // 轨迹颜色
             egui::Color32::from_rgba_premultiplied(80, 80, 80, 128), // 背景网格
         );
 
@@ -171,7 +172,7 @@ mod tests {
     #[test]
     fn test_theme_manager_creation() {
         let theme_manager = ThemeManager::new(ColorTheme::Light);
-        assert_eq!(theme_manager.current_theme(), ColorTheme::Light);
+        assert_eq!(theme_manager.current_theme, ColorTheme::Light);
         assert!(!theme_manager.is_transitioning());
     }
 

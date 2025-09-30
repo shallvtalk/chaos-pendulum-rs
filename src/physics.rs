@@ -1,7 +1,6 @@
 /// 物理引擎模块
 /// 实现双摆的动力学方程和数值积分
-
-use crate::pendulum::{PendulumState, PendulumParams};
+use crate::pendulum::{PendulumParams, PendulumState};
 
 /// 双摆的动力学方程导数
 #[derive(Clone, Copy, Debug)]
@@ -60,22 +59,21 @@ impl PhysicsEngine {
         self.dt = dt.max(1e-6); // 防止时间步长过小
     }
 
-
     /// 高级步进函数 - 自动选择最佳积分器并验证能量守恒
     pub fn step(&self, state: &PendulumState, params: &PendulumParams) -> (PendulumState, f64) {
         let initial_energy = state.total_energy(params);
-        
+
         // 使用RK4积分
         let new_state = self.integrate_rk4(state, params);
         let final_energy = new_state.total_energy(params);
-        
+
         // 计算能量误差（用于监控数值精度）
         let energy_error = if initial_energy.abs() > 1e-10 {
             (final_energy - initial_energy).abs() / initial_energy.abs()
         } else {
             (final_energy - initial_energy).abs()
         };
-        
+
         (new_state, energy_error)
     }
 
@@ -108,10 +106,10 @@ impl PhysicsEngine {
         let m11 = (m1 + m2) * l1 * l1;
         let m12 = m2 * l1 * l2 * cos_delta;
         let m22 = m2 * l2 * l2;
-        
+
         // 科里奥利和离心力项
-        let c1 = -m2 * l1 * l2 * omega2 * omega2 * sin_delta 
-               - 2.0 * m2 * l1 * l2 * omega2 * omega1 * sin_delta;
+        let c1 = -m2 * l1 * l2 * omega2 * omega2 * sin_delta
+            - 2.0 * m2 * l1 * l2 * omega2 * omega1 * sin_delta;
         let c2 = m2 * l1 * l2 * omega1 * omega1 * sin_delta;
 
         // 重力项（theta=0为垂直向下，重力提供回复力矩）
@@ -128,7 +126,7 @@ impl PhysicsEngine {
 
         // 质量矩阵的行列式
         let det = m11 * m22 - m12 * m12;
-        
+
         // 避免奇异性
         let det = if det.abs() < 1e-10 {
             1e-10 * det.signum()
@@ -143,25 +141,33 @@ impl PhysicsEngine {
         StateDerivative::new(omega1, omega2, alpha1, alpha2)
     }
 
+    /// 使用欧拉方法进行数值积分（简单但精度较低）
+    #[allow(dead_code)]
+    pub fn integrate_euler(&self, state: &PendulumState, params: &PendulumParams) -> PendulumState {
+        let dt = self.dt;
+        let derivative = self.compute_derivatives(state, params);
+
+        let mut new_state = self.add_scaled_derivative(state, &derivative, dt);
+        new_state.normalize_angles();
+
+        new_state
+    }
+
     /// 使用Runge-Kutta 4阶方法进行数值积分
-    pub fn integrate_rk4(
-        &self,
-        state: &PendulumState,
-        params: &PendulumParams,
-    ) -> PendulumState {
+    pub fn integrate_rk4(&self, state: &PendulumState, params: &PendulumParams) -> PendulumState {
         let dt = self.dt;
 
         // k1 = f(t, y)
         let k1 = self.compute_derivatives(state, params);
-        
+
         // k2 = f(t + dt/2, y + dt/2 * k1)
         let state2 = self.add_scaled_derivative(state, &k1, dt / 2.0);
         let k2 = self.compute_derivatives(&state2, params);
-        
+
         // k3 = f(t + dt/2, y + dt/2 * k2)
         let state3 = self.add_scaled_derivative(state, &k2, dt / 2.0);
         let k3 = self.compute_derivatives(&state3, params);
-        
+
         // k4 = f(t + dt, y + dt * k3)
         let state4 = self.add_scaled_derivative(state, &k3, dt);
         let k4 = self.compute_derivatives(&state4, params);
@@ -173,13 +179,12 @@ impl PhysicsEngine {
             .add(&k4);
 
         let mut new_state = self.add_scaled_derivative(state, &k_combined, dt / 6.0);
-        
+
         // 标准化角度到 [-π, π] 范围
         new_state.normalize_angles();
-        
+
         new_state
     }
-
 
     /// 辅助函数：将状态与缩放的导数相加
     fn add_scaled_derivative(
@@ -246,7 +251,10 @@ impl PhysicsEngine {
         let error_omega1 = (full_step.omega1 - half_steps.omega1).abs();
         let error_omega2 = (full_step.omega2 - half_steps.omega2).abs();
 
-        error_theta1.max(error_theta2).max(error_omega1).max(error_omega2)
+        error_theta1
+            .max(error_theta2)
+            .max(error_omega1)
+            .max(error_omega2)
     }
 }
 
@@ -264,18 +272,18 @@ mod tests {
     #[test]
     fn test_physics_engine_creation() {
         let engine = PhysicsEngine::new(0.01);
-        assert_eq!(engine.dt(), 0.01);
+        assert_eq!(engine.dt, 0.01);
     }
 
     #[test]
     fn test_set_dt() {
         let mut engine = PhysicsEngine::new(0.01);
         engine.set_dt(0.005);
-        assert_eq!(engine.dt(), 0.005);
+        assert_eq!(engine.dt, 0.005);
 
         // 测试最小时间步长限制
         engine.set_dt(1e-10);
-        assert!(engine.dt() >= 1e-6);
+        assert!(engine.dt >= 1e-6);
     }
 
     #[test]
@@ -296,11 +304,11 @@ mod tests {
     fn test_compute_derivatives() {
         let engine = PhysicsEngine::new(0.001);
         let params = PendulumParams::default();
-        
+
         // 测试垂直静止状态
         let state = PendulumState::new(0.0, 0.0, 0.0, 0.0);
         let derivatives = engine.compute_derivatives(&state, &params);
-        
+
         // 在垂直位置，角速度的导数应该为0（静力平衡）
         assert_eq!(derivatives.dtheta1, 0.0);
         assert_eq!(derivatives.dtheta2, 0.0);
@@ -315,7 +323,7 @@ mod tests {
         let state = PendulumState::new(0.1, 0.2, 0.0, 0.0);
 
         let new_state = engine.integrate_euler(&state, &params);
-        
+
         // 角度应该有所变化（由于重力作用）
         assert_ne!(new_state.theta1, state.theta1);
         assert_ne!(new_state.theta2, state.theta2);
@@ -328,7 +336,7 @@ mod tests {
         let state = PendulumState::new(0.1, 0.2, 0.0, 0.0);
 
         let new_state = engine.integrate_rk4(&state, &params);
-        
+
         // RK4应该给出不同于欧拉法的结果
         let euler_state = engine.integrate_euler(&state, &params);
         assert_ne!(new_state.theta1, euler_state.theta1);
@@ -359,17 +367,17 @@ mod tests {
     fn test_angle_normalization() {
         let engine = PhysicsEngine::new(0.001);
         let params = PendulumParams::default();
-        
+
         // 创建一个角度超出范围的状态
         let state = PendulumState::new(
-            4.0 * std::f64::consts::PI, 
-            -3.0 * std::f64::consts::PI, 
-            1.0, 
-            -1.0
+            4.0 * std::f64::consts::PI,
+            -3.0 * std::f64::consts::PI,
+            1.0,
+            -1.0,
         );
 
         let new_state = engine.integrate_rk4(&state, &params);
-        
+
         // 积分后角度应该被标准化
         assert!(new_state.theta1 >= -std::f64::consts::PI);
         assert!(new_state.theta1 <= std::f64::consts::PI);
@@ -381,19 +389,25 @@ mod tests {
     fn test_gravity_direction() {
         let engine = PhysicsEngine::new(0.001);
         let params = PendulumParams::default();
-        
+
         // 测试：当摆向右偏移时（theta > 0），重力应该产生向左的力矩（负的角加速度）
         let state = PendulumState::new(0.1, 0.0, 0.0, 0.0); // 上摆向右偏移10度
         let derivatives = engine.compute_derivatives(&state, &params);
-        
+
         // 重力应该产生负的角加速度，让摆回到平衡位置
-        assert!(derivatives.domega1 < 0.0, "上摆向右偏移时，应该产生向左的角加速度");
-        
+        assert!(
+            derivatives.domega1 < 0.0,
+            "上摆向右偏移时，应该产生向左的角加速度"
+        );
+
         // 测试：当摆向左偏移时（theta < 0），重力应该产生向右的力矩（正的角加速度）
         let state = PendulumState::new(-0.1, 0.0, 0.0, 0.0); // 上摆向左偏移10度
         let derivatives = engine.compute_derivatives(&state, &params);
-        
+
         // 重力应该产生正的角加速度，让摆回到平衡位置
-        assert!(derivatives.domega1 > 0.0, "上摆向左偏移时，应该产生向右的角加速度");
+        assert!(
+            derivatives.domega1 > 0.0,
+            "上摆向左偏移时，应该产生向右的角加速度"
+        );
     }
 }

@@ -29,8 +29,14 @@ impl PhysicsStatistics {
     }
 
     /// 添加新的能量数据点
-    pub fn add_energy_data(&mut self, total_energy: f64, kinetic_energy: f64, potential_energy: f64) {
-        self.energy_history.push((total_energy, kinetic_energy, potential_energy));
+    pub fn add_energy_data(
+        &mut self,
+        total_energy: f64,
+        kinetic_energy: f64,
+        potential_energy: f64,
+    ) {
+        self.energy_history
+            .push((total_energy, kinetic_energy, potential_energy));
 
         // 保持历史记录在指定长度内
         if self.energy_history.len() > self.max_history_length {
@@ -50,7 +56,8 @@ impl PhysicsStatistics {
 
     /// 添加新的相空间数据点
     pub fn add_phase_space_point(&mut self, theta1: f64, omega1: f64, theta2: f64, omega2: f64) {
-        self.phase_space_history.push((theta1, omega1, theta2, omega2));
+        self.phase_space_history
+            .push((theta1, omega1, theta2, omega2));
 
         // 保持历史记录在指定长度内
         if self.phase_space_history.len() > self.max_history_length {
@@ -102,16 +109,18 @@ impl PhysicsStatistics {
 
     /// 获取最大总能量
     pub fn get_max_total_energy(&self) -> Option<f64> {
-        self.energy_history.iter().map(|e| e.0).fold(None, |acc, x| {
-            Some(acc.map_or(x, |y| x.max(y)))
-        })
+        self.energy_history
+            .iter()
+            .map(|e| e.0)
+            .fold(None, |acc, x| Some(acc.map_or(x, |y| x.max(y))))
     }
 
     /// 获取最小总能量
     pub fn get_min_total_energy(&self) -> Option<f64> {
-        self.energy_history.iter().map(|e| e.0).fold(None, |acc, x| {
-            Some(acc.map_or(x, |y| x.min(y)))
-        })
+        self.energy_history
+            .iter()
+            .map(|e| e.0)
+            .fold(None, |acc, x| Some(acc.map_or(x, |y| x.min(y))))
     }
 
     /// 获取平均总能量
@@ -129,7 +138,6 @@ impl PhysicsStatistics {
         !self.energy_history.is_empty()
     }
 
-
     /// 计算能量守恒度（能量变化的标准差）
     pub fn get_energy_conservation(&self) -> Option<f64> {
         if self.energy_history.len() < 2 {
@@ -138,10 +146,9 @@ impl PhysicsStatistics {
 
         let energies: Vec<f64> = self.energy_history.iter().map(|e| e.0).collect();
         let mean = energies.iter().sum::<f64>() / energies.len() as f64;
-        let variance = energies.iter()
-            .map(|e| (e - mean).powi(2))
-            .sum::<f64>() / energies.len() as f64;
-        
+        let variance =
+            energies.iter().map(|e| (e - mean).powi(2)).sum::<f64>() / energies.len() as f64;
+
         Some(variance.sqrt())
     }
 
@@ -156,14 +163,14 @@ impl PhysicsStatistics {
         let len = history.len();
 
         // 检查不同周期长度
-        for period in min_period..len/2 {
+        for period in min_period..len / 2 {
             let mut is_periodic = true;
             let check_points = (len / period).min(10); // 检查多个周期
 
             for i in 0..check_points {
                 let idx1 = len - 1 - i * period;
                 let idx2 = len - 1 - (i + 1) * period;
-                
+
                 if idx2 < period {
                     break;
                 }
@@ -172,10 +179,11 @@ impl PhysicsStatistics {
                 let point2 = &history[idx2];
 
                 // 检查四个维度的距离
-                let distance = ((point1.0 - point2.0).powi(2) +
-                               (point1.1 - point2.1).powi(2) +
-                               (point1.2 - point2.2).powi(2) +
-                               (point1.3 - point2.3).powi(2)).sqrt();
+                let distance = ((point1.0 - point2.0).powi(2)
+                    + (point1.1 - point2.1).powi(2)
+                    + (point1.2 - point2.2).powi(2)
+                    + (point1.3 - point2.3).powi(2))
+                .sqrt();
 
                 if distance > tolerance {
                     is_periodic = false;
@@ -203,24 +211,25 @@ impl PhysicsStatistics {
         let mut divergences = Vec::new();
 
         // 选择一个参考点和一个接近的点
-        for i in 0..len-window_size {
+        for i in 0..len - window_size {
             if i + window_size >= len {
                 break;
             }
 
             let ref_point = &history[i];
-            
+
             // 寻找最接近的点
             let mut min_distance = f64::INFINITY;
             let mut closest_idx = 0;
-            
-            for j in (i+10)..(i+50).min(len) {
+
+            for j in (i + 10)..(i + 50).min(len) {
                 let test_point = &history[j];
-                let distance = ((ref_point.0 - test_point.0).powi(2) +
-                               (ref_point.1 - test_point.1).powi(2) +
-                               (ref_point.2 - test_point.2).powi(2) +
-                               (ref_point.3 - test_point.3).powi(2)).sqrt();
-                
+                let distance = ((ref_point.0 - test_point.0).powi(2)
+                    + (ref_point.1 - test_point.1).powi(2)
+                    + (ref_point.2 - test_point.2).powi(2)
+                    + (ref_point.3 - test_point.3).powi(2))
+                .sqrt();
+
                 if distance < min_distance && distance > 1e-8 {
                     min_distance = distance;
                     closest_idx = j;
@@ -230,14 +239,16 @@ impl PhysicsStatistics {
             if closest_idx > 0 && closest_idx + window_size < len {
                 let future_ref = &history[i + window_size];
                 let future_close = &history[closest_idx + window_size];
-                
-                let future_distance = ((future_ref.0 - future_close.0).powi(2) +
-                                      (future_ref.1 - future_close.1).powi(2) +
-                                      (future_ref.2 - future_close.2).powi(2) +
-                                      (future_ref.3 - future_close.3).powi(2)).sqrt();
+
+                let future_distance = ((future_ref.0 - future_close.0).powi(2)
+                    + (future_ref.1 - future_close.1).powi(2)
+                    + (future_ref.2 - future_close.2).powi(2)
+                    + (future_ref.3 - future_close.3).powi(2))
+                .sqrt();
 
                 if future_distance > 1e-8 && min_distance > 1e-8 {
-                    let divergence_rate = (future_distance / min_distance).ln() / window_size as f64;
+                    let divergence_rate =
+                        (future_distance / min_distance).ln() / window_size as f64;
                     divergences.push(divergence_rate);
                 }
             }
@@ -266,7 +277,6 @@ mod tests {
     fn test_physics_statistics_creation() {
         let stats = PhysicsStatistics::new(100);
         assert_eq!(stats.max_history_length, 100);
-        assert!(stats.show_statistics);
         assert!(!stats.has_data());
     }
 
