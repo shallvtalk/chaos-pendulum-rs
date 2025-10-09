@@ -8,6 +8,8 @@
 pub struct PhysicsStatistics {
     /// 能量历史记录（总能量、动能、势能）
     energy_history: Vec<(f64, f64, f64)>,
+    /// 能量误差历史记录
+    energy_error_history: Vec<f64>,
     /// 轨迹点历史记录 (x1, y1, x2, y2)
     trajectory_history: Vec<(f64, f64, f64, f64)>,
     /// 相空间点历史记录 (theta1, omega1, theta2, omega2)
@@ -22,6 +24,7 @@ impl PhysicsStatistics {
     pub fn new(max_history_length: usize) -> Self {
         Self {
             energy_history: Vec::new(),
+            energy_error_history: Vec::new(),
             trajectory_history: Vec::new(),
             phase_space_history: Vec::new(),
             max_history_length,
@@ -41,6 +44,16 @@ impl PhysicsStatistics {
         // 保持历史记录在指定长度内
         if self.energy_history.len() > self.max_history_length {
             self.energy_history.remove(0);
+        }
+    }
+
+    /// 添加新的能量误差数据点
+    pub fn add_energy_error(&mut self, energy_error: f64) {
+        self.energy_error_history.push(energy_error);
+
+        // 保持历史记录在指定长度内
+        if self.energy_error_history.len() > self.max_history_length {
+            self.energy_error_history.remove(0);
         }
     }
 
@@ -68,6 +81,7 @@ impl PhysicsStatistics {
     /// 清除所有统计历史
     pub fn clear_history(&mut self) {
         self.energy_history.clear();
+        self.energy_error_history.clear();
         self.trajectory_history.clear();
         self.phase_space_history.clear();
     }
@@ -85,6 +99,11 @@ impl PhysicsStatistics {
     /// 获取相空间历史记录的引用
     pub fn get_phase_space_history(&self) -> &Vec<(f64, f64, f64, f64)> {
         &self.phase_space_history
+    }
+
+    /// 获取能量误差历史记录的引用
+    pub fn get_energy_error_history(&self) -> &Vec<f64> {
+        &self.energy_error_history
     }
 
     /// 获取当前历史记录长度

@@ -56,7 +56,7 @@ impl PhysicsEngine {
 
     /// 设置时间步长
     pub fn set_dt(&mut self, dt: f64) {
-        self.dt = dt.max(1e-6); // 防止时间步长过小
+        self.dt = dt.max(1e-12); // 防止时间步长过小
     }
 
     /// 高级步进函数 - 自动选择最佳积分器并验证能量守恒
@@ -127,9 +127,13 @@ impl PhysicsEngine {
         // 质量矩阵的行列式
         let det = m11 * m22 - m12 * m12;
 
-        // 避免奇异性
-        let det = if det.abs() < 1e-10 {
-            1e-10 * det.signum()
+        let eps = 1e-10;
+        let det = if det.abs() < eps {
+            if det == 0.0 {
+                eps
+            } else {
+                det.signum() * eps
+            }
         } else {
             det
         };

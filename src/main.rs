@@ -57,6 +57,8 @@ struct ChaosPendulumApp {
     show_phase_space: bool,
     /// 是否显示能量图
     show_energy_plot: bool,
+    /// 是否显示能量误差图
+    show_energy_error_plot: bool,
     /// 当前能量误差
     energy_error: f64,
 }
@@ -115,6 +117,7 @@ impl Default for ChaosPendulumApp {
             temp_params: params,
             show_phase_space: false,
             show_energy_plot: true,
+            show_energy_error_plot: true,
             energy_error: 0.0,
         }
     }
@@ -164,6 +167,7 @@ impl ChaosPendulumApp {
                     self.pendulum.kinetic_energy(),
                     self.pendulum.potential_energy(),
                 );
+                self.statistics.add_energy_error(self.energy_error);
 
                 let (pos1, pos2) = self.pendulum.get_positions();
                 self.statistics
@@ -444,6 +448,7 @@ impl eframe::App for ChaosPendulumApp {
                             self.ui_state.set_show_trajectory(show_trajectory);
 
                             ui.checkbox(&mut self.show_energy_plot, "Show Energy Plot");
+                            ui.checkbox(&mut self.show_energy_error_plot, "Show Energy Error Plot");
                             ui.checkbox(&mut self.show_phase_space, "Show Phase Space");
 
                             let mut show_grid = self.ui_state.show_grid_lines();
@@ -504,9 +509,9 @@ impl eframe::App for ChaosPendulumApp {
 
                         // 能量守恒监控
                         ui.separator();
-                        let energy_color = if self.energy_error < 1e-6 {
+                        let energy_color = if self.energy_error < 1e-8 {
                             egui::Color32::GREEN
-                        } else if self.energy_error < 1e-4 {
+                        } else if self.energy_error < 1e-6 {
                             egui::Color32::YELLOW
                         } else {
                             egui::Color32::RED
@@ -519,7 +524,7 @@ impl eframe::App for ChaosPendulumApp {
             });
 
         // 创建右侧统计面板
-        if self.show_energy_plot || self.show_phase_space {
+        if self.show_energy_plot || self.show_energy_error_plot || self.show_phase_space {
             egui::SidePanel::right("statistics")
                 .default_width(400.0)
                 .min_width(300.0)
@@ -567,6 +572,86 @@ impl eframe::App for ChaosPendulumApp {
                                             .color(egui::Color32::BLUE),
                                     );
                                 });
+                            }
+                        });
+                    }
+
+                    if self.show_energy_error_plot {
+                        egui::CollapsingHeader::new("Energy Error Plot")
+                            .default_open(true)
+                            .show(ui, |ui| {
+                            use egui_plot::{Line, Plot, PlotPoints};
+
+                            let error_history = self.statistics.get_energy_error_history();
+                            if !error_history.is_empty() {
+                                Plot::new("energy_error_plot")
+                                    .height(200.0)
+                                    .y_axis_label("Log10(Energy Error)")
+                                    .show(ui, |plot_ui| {
+                                        // 使用对数刻度显示能量误差
+                                        let log_error_points: PlotPoints = error_history
+                                            .iter()
+                                            .enumerate()
+                                            .filter_map(|(i, error)| {
+                                                if *error > 0.0 {
+                                                    Some([i as f64, error.log10()])
+                                                } else {
+                                                    None
+                                                }
+                                            })
+                                            .collect();
+
+                                        // 根据当前误差动态选择颜色
+                                        let line_color = if let Some(current_error) = error_history.last() {
+                                            if *current_error < 1e-8 {
+                                                egui::Color32::GREEN
+                                            } else if *current_error < 1e-6 {
+                                                egui::Color32::YELLOW
+                                            } else {
+                                                egui::Color32::RED
+                                            }
+                                        } else {
+                                            egui::Color32::YELLOW
+                                        };
+
+                                        plot_ui.line(
+                                            Line::new(log_error_points)
+                                                .name("Log10(Energy Error)")
+                                                .color(line_color),
+                                        );
+                                    });
+
+                                // 添加能量误差统计信息
+                                if let Some(max_error) = error_history
+                                    .iter()
+                                    .copied()
+                                    .fold(None, |acc, x| Some(acc.map_or(x, |y| x.max(y))))
+                                {
+                                    ui.small(format!("Max Error: {:.2e}", max_error));
+                                }
+                                if let Some(avg_error) = if !error_history.is_empty() {
+                                    Some(
+                                        error_history.iter().sum::<f64>()
+                                            / error_history.len() as f64,
+                                    )
+                                } else {
+                                    None
+                                } {
+                                    ui.small(format!("Avg Error: {:.2e}", avg_error));
+                                }
+                                if let Some(current_error) = error_history.last() {
+                                    let error_color = if *current_error < 1e-8 {
+                                        egui::Color32::GREEN
+                                    } else if *current_error < 1e-6 {
+                                        egui::Color32::YELLOW
+                                    } else {
+                                        egui::Color32::RED
+                                    };
+                                    ui.colored_label(
+                                        error_color,
+                                        format!("Current Error: {:.2e}", current_error),
+                                    );
+                                }
                             }
                         });
                     }
