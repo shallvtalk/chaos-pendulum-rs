@@ -59,22 +59,41 @@ impl PhysicsEngine {
         self.dt = dt.max(1e-12); // 防止时间步长过小
     }
 
-    /// 高级步进函数 - 自动选择最佳积分器并验证能量守恒
+    /// 高级步进函数 - 自适应积分器并验证能量守恒
     pub fn step(&self, state: &PendulumState, params: &PendulumParams) -> (PendulumState, f64) {
         let initial_energy = state.total_energy(params);
 
-        // 使用RK4积分
-        let new_state = self.integrate_rk4(state, params);
+        // 检查状态是否有效（防止NaN或无穷大）
+        if !self.is_state_valid(state) {
+            return (*state, 1.0); // 返回原状态和高误差
+        }
+
+        // 使用改进的RK4积分
+        let new_state = self.integrate_rk4_robust(state, params);
         let final_energy = new_state.total_energy(params);
 
         // 计算能量误差（用于监控数值精度）
-        let energy_error = if initial_energy.abs() > 1e-10 {
+        let energy_error = if initial_energy.abs() > 1e-12 {
             (final_energy - initial_energy).abs() / initial_energy.abs()
         } else {
             (final_energy - initial_energy).abs()
         };
 
-        (new_state, energy_error)
+        // 如果能量误差过大，尝试使用更小的步长
+        if energy_error > 1e-3 {
+            let smaller_engine = PhysicsEngine::new(self.dt * 0.5);
+            let intermediate_state = smaller_engine.integrate_rk4_robust(state, params);
+            let final_state = smaller_engine.integrate_rk4_robust(&intermediate_state, params);
+            let corrected_energy = final_state.total_energy(params);
+            let corrected_error = if initial_energy.abs() > 1e-12 {
+                (corrected_energy - initial_energy).abs() / initial_energy.abs()
+            } else {
+                (corrected_energy - initial_energy).abs()
+            };
+            (final_state, corrected_error)
+        } else {
+            (new_state, energy_error)
+        }
     }
 
     /// 计算双摆系统的导数（动力学方程）
@@ -107,9 +126,9 @@ impl PhysicsEngine {
         let m12 = m2 * l1 * l2 * cos_delta;
         let m22 = m2 * l2 * l2;
 
-        // 科里奥利和离心力项
+        // 科里奥利和离心力项 - 修正计算
         let c1 = -m2 * l1 * l2 * omega2 * omega2 * sin_delta
-            - 2.0 * m2 * l1 * l2 * omega2 * omega1 * sin_delta;
+            - m2 * l1 * l2 * omega2 * omega1 * sin_delta;
         let c2 = m2 * l1 * l2 * omega1 * omega1 * sin_delta;
 
         // 重力项（theta=0为垂直向下，重力提供回复力矩）
@@ -142,7 +161,19 @@ impl PhysicsEngine {
         let alpha1 = (m22 * rhs1 - m12 * rhs2) / det;
         let alpha2 = (m11 * rhs2 - m12 * rhs1) / det;
 
-        StateDerivative::new(omega1, omega2, alpha1, alpha2)
+        // 检查结果是否有效
+        if !alpha1.is_finite() || !alpha2.is_finite() {
+            StateDerivative::new(omega1, omega2, 0.0, 0.0)
+        } else {
+            StateDerivative::new(omega1, omega2, alpha1, alpha2)
+        }
+    }
+
+    /// 检查状态是否有效
+    fn is_state_valid(&self, state: &PendulumState) -> bool {
+        state.theta1.is_finite() && state.theta2.is_finite() 
+            && state.omega1.is_finite() && state.omega2.is_finite()
+            && state.omega1.abs() < 1000.0 && state.omega2.abs() < 1000.0 // 防止角速度过大
     }
 
     /// 使用欧拉方法进行数值积分（简单但精度较低）
@@ -190,6 +221,43 @@ impl PhysicsEngine {
         new_state
     }
 
+    /// 使用改进的Runge-Kutta 4阶方法进行数值积分（更鲁棒）
+    pub fn integrate_rk4_robust(&self, state: &PendulumState, params: &PendulumParams) -> PendulumState {
+        let dt = self.dt;
+
+        // k1 = f(t, y)
+        let k1 = self.compute_derivatives(state, params);
+
+        // k2 = f(t + dt/2, y + dt/2 * k1)
+        let state2 = self.add_scaled_derivative_safe(state, &k1, dt / 2.0);
+        let k2 = self.compute_derivatives(&state2, params);
+
+        // k3 = f(t + dt/2, y + dt/2 * k2)
+        let state3 = self.add_scaled_derivative_safe(state, &k2, dt / 2.0);
+        let k3 = self.compute_derivatives(&state3, params);
+
+        // k4 = f(t + dt, y + dt * k3)
+        let state4 = self.add_scaled_derivative_safe(state, &k3, dt);
+        let k4 = self.compute_derivatives(&state4, params);
+
+        // y_{n+1} = y_n + dt/6 * (k1 + 2*k2 + 2*k3 + k4)
+        let k_combined = k1
+            .add(&k2.mul_scalar(2.0))
+            .add(&k3.mul_scalar(2.0))
+            .add(&k4);
+
+        let mut new_state = self.add_scaled_derivative_safe(state, &k_combined, dt / 6.0);
+
+        // 标准化角度到 [-π, π] 范围
+        new_state.normalize_angles();
+
+        // 应用角速度限制以提高稳定性
+        new_state.omega1 = new_state.omega1.clamp(-100.0, 100.0);
+        new_state.omega2 = new_state.omega2.clamp(-100.0, 100.0);
+
+        new_state
+    }
+
     /// 辅助函数：将状态与缩放的导数相加
     fn add_scaled_derivative(
         &self,
@@ -203,6 +271,29 @@ impl PhysicsEngine {
             state.omega1 + derivative.domega1 * scale,
             state.omega2 + derivative.domega2 * scale,
         )
+    }
+
+    /// 安全的状态更新函数：检查数值稳定性
+    fn add_scaled_derivative_safe(
+        &self,
+        state: &PendulumState,
+        derivative: &StateDerivative,
+        scale: f64,
+    ) -> PendulumState {
+        let new_theta1 = state.theta1 + derivative.dtheta1 * scale;
+        let new_theta2 = state.theta2 + derivative.dtheta2 * scale;
+        let new_omega1 = state.omega1 + derivative.domega1 * scale;
+        let new_omega2 = state.omega2 + derivative.domega2 * scale;
+
+        // 检查结果是否有效
+        if new_theta1.is_finite() && new_theta2.is_finite() 
+            && new_omega1.is_finite() && new_omega2.is_finite()
+            && new_omega1.abs() < 1000.0 && new_omega2.abs() < 1000.0 {
+            PendulumState::new(new_theta1, new_theta2, new_omega1, new_omega2)
+        } else {
+            // 如果结果无效，返回原状态
+            *state
+        }
     }
 
     /// 自适应步长的Runge-Kutta方法（可选的高级功能）
@@ -264,7 +355,7 @@ impl PhysicsEngine {
 
 impl Default for PhysicsEngine {
     fn default() -> Self {
-        Self::new(0.001) // 默认1ms时间步长
+        Self::new(0.0005) // 默认0.5ms时间步长，提高精度
     }
 }
 

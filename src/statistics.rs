@@ -47,9 +47,16 @@ impl PhysicsStatistics {
         }
     }
 
-    /// 添加新的能量误差数据点
+    /// 添加新的能量误差数据点（记录数量级）
     pub fn add_energy_error(&mut self, energy_error: f64) {
-        self.energy_error_history.push(energy_error);
+        // 计算数量级：log10(error)，如果error为0或负数则记录为-20
+        let log_error = if energy_error > 0.0 && energy_error.is_finite() {
+            energy_error.log10()
+        } else {
+            -20.0 // 表示极小的误差
+        };
+        
+        self.energy_error_history.push(log_error);
 
         // 保持历史记录在指定长度内
         if self.energy_error_history.len() > self.max_history_length {

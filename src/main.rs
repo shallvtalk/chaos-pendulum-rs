@@ -70,9 +70,9 @@ impl Default for ChaosPendulumApp {
 
         // 创建初始状态（向上偏移以获得足够势能）
         let initial_state = PendulumState::new(
-            -std::f64::consts::PI / 6.0, // 上摆向上30度
-            -std::f64::consts::PI / 4.0, // 下摆向上45度
-            0.0,                         // 初始角速度为0
+            -std::f64::consts::PI * 2.0 / 3.0, // 上摆向上120度（接近倒立）
+            -std::f64::consts::PI / 2.0,       // 下摆向上90度（水平）
+            0.0,                               // 初始角速度为0
             0.0,
         );
 
@@ -185,8 +185,8 @@ impl ChaosPendulumApp {
     /// 重置模拟
     fn reset_simulation(&mut self) {
         self.pendulum.reset(PendulumState::new(
-            -std::f64::consts::PI / 6.0,
-            -std::f64::consts::PI / 4.0,
+            -std::f64::consts::PI * 2.0 / 3.0,
+            -std::f64::consts::PI / 2.0,
             0.0,
             0.0,
         ));
@@ -588,24 +588,18 @@ impl eframe::App for ChaosPendulumApp {
                                     .height(200.0)
                                     .y_axis_label("Log10(Energy Error)")
                                     .show(ui, |plot_ui| {
-                                        // 使用对数刻度显示能量误差
+                                        // 直接显示已经是对数的误差值
                                         let log_error_points: PlotPoints = error_history
                                             .iter()
                                             .enumerate()
-                                            .filter_map(|(i, error)| {
-                                                if *error > 0.0 {
-                                                    Some([i as f64, error.log10()])
-                                                } else {
-                                                    None
-                                                }
-                                            })
+                                            .map(|(i, log_error)| [i as f64, *log_error])
                                             .collect();
 
-                                        // 根据当前误差动态选择颜色
-                                        let line_color = if let Some(current_error) = error_history.last() {
-                                            if *current_error < 1e-8 {
+                                        // 根据当前误差数量级动态选择颜色
+                                        let line_color = if let Some(current_log_error) = error_history.last() {
+                                            if *current_log_error < -8.0 {  // < 1e-8
                                                 egui::Color32::GREEN
-                                            } else if *current_error < 1e-6 {
+                                            } else if *current_log_error < -6.0 {  // < 1e-6
                                                 egui::Color32::YELLOW
                                             } else {
                                                 egui::Color32::RED
@@ -621,15 +615,15 @@ impl eframe::App for ChaosPendulumApp {
                                         );
                                     });
 
-                                // 添加能量误差统计信息
-                                if let Some(max_error) = error_history
+                                // 添加能量误差统计信息（显示数量级）
+                                if let Some(max_log_error) = error_history
                                     .iter()
                                     .copied()
                                     .fold(None, |acc, x| Some(acc.map_or(x, |y| x.max(y))))
                                 {
-                                    ui.small(format!("Max Error: {:.2e}", max_error));
+                                    ui.small(format!("Max Error: 10^{:.1}", max_log_error));
                                 }
-                                if let Some(avg_error) = if !error_history.is_empty() {
+                                if let Some(avg_log_error) = if !error_history.is_empty() {
                                     Some(
                                         error_history.iter().sum::<f64>()
                                             / error_history.len() as f64,
@@ -637,19 +631,19 @@ impl eframe::App for ChaosPendulumApp {
                                 } else {
                                     None
                                 } {
-                                    ui.small(format!("Avg Error: {:.2e}", avg_error));
+                                    ui.small(format!("Avg Error: 10^{:.1}", avg_log_error));
                                 }
-                                if let Some(current_error) = error_history.last() {
-                                    let error_color = if *current_error < 1e-8 {
+                                if let Some(current_log_error) = error_history.last() {
+                                    let error_color = if *current_log_error < -8.0 {
                                         egui::Color32::GREEN
-                                    } else if *current_error < 1e-6 {
+                                    } else if *current_log_error < -6.0 {
                                         egui::Color32::YELLOW
                                     } else {
                                         egui::Color32::RED
                                     };
                                     ui.colored_label(
                                         error_color,
-                                        format!("Current Error: {:.2e}", current_error),
+                                        format!("Current Error: 10^{:.1}", current_log_error),
                                     );
                                 }
                             }
