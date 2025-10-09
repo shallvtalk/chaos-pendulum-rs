@@ -124,6 +124,21 @@ impl ThemeManager {
         }
     }
 
+    /// 获取统计图表的颜色（考虑主题兼容性）
+    pub fn get_chart_colors(&self) -> (egui::Color32, egui::Color32) {
+        // 根据当前主题返回不同的颜色
+        match self.current_theme {
+            ColorTheme::Light => (
+                egui::Color32::from_rgb(0, 100, 200),   // 平均线：深蓝色
+                egui::Color32::from_rgb(0, 150, 100),   // 方差线：深绿色
+            ),
+            ColorTheme::Dark => (
+                egui::Color32::from_rgb(100, 150, 255), // 平均线：亮蓝色
+                egui::Color32::from_rgb(100, 200, 150), // 方差线：亮绿色
+            ),
+        }
+    }
+
     /// 设置UI主题（支持动画过渡）
     pub fn apply_ui_theme(&self, ctx: &egui::Context) {
         // 在动画过程中，根据进度选择UI主题

@@ -583,6 +583,7 @@ impl eframe::App for ChaosPendulumApp {
                             use egui_plot::{Line, Plot, PlotPoints};
 
                             let error_history = self.statistics.get_energy_error_history();
+                            let theme_manager = &self.theme_manager;
                             if !error_history.is_empty() {
                                 Plot::new("energy_error_plot")
                                     .height(200.0)
@@ -613,6 +614,54 @@ impl eframe::App for ChaosPendulumApp {
                                                 .name("Log10(Energy Error)")
                                                 .color(line_color),
                                         );
+
+                                        // 计算并显示平均值线
+                                        if error_history.len() > 1 {
+                                            let avg_log_error = error_history.iter().sum::<f64>() / error_history.len() as f64;
+                                            let avg_line: PlotPoints = (0..error_history.len())
+                                                .map(|i| [i as f64, avg_log_error])
+                                                .collect();
+                                            
+                                            // 获取主题兼容的颜色
+                                            let (avg_color, variance_color) = theme_manager.get_chart_colors();
+                                            
+                                            plot_ui.line(
+                                                Line::new(avg_line)
+                                                    .name("Average")
+                                                    .color(avg_color)
+                                                    .style(egui_plot::LineStyle::Dashed { length: 5.0 }),
+                                            );
+
+                                            // 计算方差和标准差
+                                            let variance = error_history.iter()
+                                                .map(|x| (x - avg_log_error).powi(2))
+                                                .sum::<f64>() / error_history.len() as f64;
+                                            let std_dev = variance.sqrt();
+
+                                            // 显示平均值±标准差的范围线
+                                            let upper_bound = avg_log_error + std_dev;
+                                            let lower_bound = avg_log_error - std_dev;
+
+                                            let upper_line: PlotPoints = (0..error_history.len())
+                                                .map(|i| [i as f64, upper_bound])
+                                                .collect();
+                                            let lower_line: PlotPoints = (0..error_history.len())
+                                                .map(|i| [i as f64, lower_bound])
+                                                .collect();
+
+                                            plot_ui.line(
+                                                Line::new(upper_line)
+                                                    .name("Avg + σ")
+                                                    .color(variance_color)
+                                                    .style(egui_plot::LineStyle::Dotted { spacing: 3.0 }),
+                                            );
+                                            plot_ui.line(
+                                                Line::new(lower_line)
+                                                    .name("Avg - σ")
+                                                    .color(variance_color)
+                                                    .style(egui_plot::LineStyle::Dotted { spacing: 3.0 }),
+                                            );
+                                        }
                                     });
 
                                 // 添加能量误差统计信息（显示数量级）
@@ -632,6 +681,15 @@ impl eframe::App for ChaosPendulumApp {
                                     None
                                 } {
                                     ui.small(format!("Avg Error: 10^{:.1}", avg_log_error));
+                                    
+                                    // 计算并显示标准差
+                                    if error_history.len() > 1 {
+                                        let variance = error_history.iter()
+                                            .map(|x| (x - avg_log_error).powi(2))
+                                            .sum::<f64>() / error_history.len() as f64;
+                                        let std_dev = variance.sqrt();
+                                        ui.small(format!("Std Dev: ±{:.1} orders", std_dev));
+                                    }
                                 }
                                 if let Some(current_log_error) = error_history.last() {
                                     let error_color = if *current_log_error < -8.0 {
